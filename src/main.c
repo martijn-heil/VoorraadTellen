@@ -110,7 +110,7 @@ static void print_welcome(void)
 
 static void clearscrn(void)
 {
-    #if (defined(__GNUC__) && defined(__MINGW32__)) || defined(WIN32) || defined(WIN64)
+    #ifdef _WIN32
         system("cls");
         print_welcome();
     #elif defined(POSIX)
@@ -330,7 +330,10 @@ static bool print_table(struct record *records, size_t n)
     if(separator == NULL) return true;
     separator[0] = '+';
     separator[separator_len - 1] = '+';
-    memset(separator + 1, '-', separator_len - 2);
+    if(separator_len > 2)
+    {
+        memset(separator + 1, '-', separator_len - 2);
+    }
     {
         size_t previous = 0;
         for(size_t i = 0; i < max_column_count; i++)
@@ -447,12 +450,23 @@ static struct search_result do_manual_search(void)
                     for(size_t k = 0; k < record->column_count; k++) search_record->columns[k + 1] = record->columns[k];
 
                     char tmp;
-                    int required_size = snprintf(&tmp, 1, "%zu", search_results_size);
-                    if(required_size < 0) { printf("Fout\n"); exit(EXIT_FAILURE); }
+                    printf("test: %lu\n", search_results_size);
+                    #if defined(_WIN32) && !(defined(_MSC_VER) && _MSC_VER >= 1800)
+                        int required_size = snprintf(&tmp, 1, "%lu", search_results_size); // blame bloody Macrosuft, %zu support came way too late.
+                    #elif
+                        int required_size = snprintf(&tmp, 1, "%zu", search_results_size);
+                    #endif
+                    if(required_size < 0) { printf("Fout: error returned by snprintf\n", strerror(errno)); exit(EXIT_FAILURE); }
                     if((unsigned int) required_size > SIZE_MAX) { printf("Fout: required_size is groter dan SIZE_MAX\n"); exit(EXIT_FAILURE); }
                     char *buf = malloc(required_size + 1);
                     if(buf == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
-                    if(sprintf(buf, "%zu", search_results_size) < 0) { printf("Fout\n"); exit(EXIT_FAILURE); }
+                    #if defined(_WIN32) && !(defined(_MSC_VER) && _MSC_VER >= 1800)
+                        // blame bloody Macrosuft, %zu support came way too late.
+                        if(sprintf(buf, "%lu", search_results_size) < 0) { printf("Fout: error returned by sprintf\n"); exit(EXIT_FAILURE); }
+                    #elif
+                        if(sprintf(buf, "%zu", search_results_size) < 0) { printf("Fout: error returned by sprintf\n"); exit(EXIT_FAILURE); }
+                    #endif
+
                     search_record->columns[0] = buf;
                     search_record->column_count++;
 
