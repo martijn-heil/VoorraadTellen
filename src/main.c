@@ -30,6 +30,7 @@
 #include <ctype.h>
 
 #include <csv.h>
+#include <safe_math.h>
 
 #ifdef __unix__
     #include <unistd.h>
@@ -203,17 +204,22 @@ static void end_of_field_callback(void *parsed_data, size_t len, void *callback_
     }
     else
     {
-        char **tmp = realloc(record->columns, record->column_count * sizeof(char *) + sizeof(char *));
+        size_t size;
+        if(!psnip_safe_mul(&size, record->column_count, sizeof(char *))) { printf("Fout: integer overflow.\n"); exit(EXIT_FAILURE); }
+        if(!psnip_safe_add(&size, size, sizeof(char *))) { printf("Fout: integer overflow\n"); exit(EXIT_FAILURE); }
+        char **tmp = realloc(record->columns, size);
         if(tmp == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
         record->columns = tmp;
     }
 
-    char *column = malloc(len + 1);
+    size_t size;
+    if(!psnip_safe_add(&size, len, 1)) { printf("Fout: integer overflow.\n"); exit(EXIT_FAILURE); }
+    char *column = malloc(size);
     if(column == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
     memcpy(column, parsed_data, len);
     column[len] = '\0';
     record->columns[record->column_count] = column;
-    record->column_count++;
+    if(!psnip_safe_add(&(record->column_count), record->column_count, 1)) { printf("Fout: integer overflow.\n"); exit(EXIT_FAILURE); }
 }
 
 static void end_of_record_callback(int c, void *callback_data)
@@ -248,21 +254,26 @@ static void end_of_record_callback(int c, void *callback_data)
         }
 
         // Save header as header
-        header.columns = malloc(record->column_count * sizeof(char *));
+        size_t size;
+        if(!psnip_safe_mul(&size, record->column_count, sizeof(char *))) { printf("Fout: integer overflow.\n"); exit(EXIT_FAILURE); }
+        header.columns = malloc(size);
         if(record->columns == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
         header.column_count = record->column_count;
-        memcpy(header.columns, record->columns, record->column_count * sizeof(char *));
+        memcpy(header.columns, record->columns, size);
 
         record->column_count = 0;
         free(record->columns);
-        records_size++;
+        if(!psnip_safe_add(&records_size, records_size, 1)) { printf("Fout: integer overflow.\n"); exit(EXIT_FAILURE); }
     }
     else
     {
-        records_size++;
+        if(!psnip_safe_add(&records_size, records_size, 1)) { printf("Fout: integer overflow.\n"); exit(EXIT_FAILURE); }
         if(records_size >= records_max_size) // Grow if needed.
         {
-            void *tmp = realloc(records, (records_max_size + RECORDS_CHUNK_SIZE) * sizeof(struct record));
+            size_t size;
+            if(!psnip_safe_add(&size, records_max_size, RECORDS_CHUNK_SIZE)) { printf("Fout: integer overflow.\n"); exit(EXIT_FAILURE); }
+            if(!psnip_safe_mul(&size, size, sizeof(struct record))) { printf("Fout: integer overflow.\n"); exit(EXIT_FAILURE); }
+            void *tmp = realloc(records, size);
             if(tmp == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
             records = tmp;
         }
@@ -324,9 +335,22 @@ static bool print_table(struct record *records, size_t n)
         }
     }
     size_t total_width = 0;
-    for(size_t i = 0; i < max_column_count; i++) total_width += max_column_widths[i];
-    size_t separator_len = total_width + max_column_count * 3 + 1;
-    char *separator = malloc(separator_len + 1);
+    for(size_t i = 0; i < max_column_count; i++)
+    {
+        if(!psnip_safe_add(&total_width, total_width, max_column_widths[i])) return true;
+    }
+
+    // overflow-safe version of this formula;
+    // size_t separator_len = total_width + max_column_count * 3 + 1;
+    size_t separator_len;
+    if(!psnip_safe_add(&separator_len, total_width, 1)) { printf("Fout: integer overflow.\n"); return true; }
+    size_t tmp;
+    if(!psnip_safe_mul(&tmp, max_column_count, 3)) { printf("Fout: integer overflow.\n"); return true; }
+    if(!psnip_safe_add(&separator_len, separator_len, tmp)) { printf("Fout: integer overflow.\n"); return true; }
+
+    size_t size;
+    if(!psnip_safe_add(&size, separator_len, 1)) { printf("Fout: integer overflow.\n"); return true; }
+    char *separator = malloc(size);
     if(separator == NULL) return true;
     separator[0] = '+';
     separator[separator_len - 1] = '+';
@@ -339,8 +363,11 @@ static bool print_table(struct record *records, size_t n)
         for(size_t i = 0; i < max_column_count; i++)
         {
             size_t max_column_width = max_column_widths[i];
-            separator[previous + max_column_width + 3] = '+';
-            previous += max_column_width + 3;
+            size_t current;
+            if(!psnip_safe_add(&current, previous, max_column_width)) { printf("Fout: integer overflow.\n"); free(separator); return true; }
+            if(!psnip_safe_add(&current, current, 3)) { printf("Fout: integer overflow.\n"); free(separator); return true; }
+            separator[current] = '+';
+            previous = current;
         }
     }
     separator[separator_len] = '\0';
@@ -360,6 +387,7 @@ static bool print_table(struct record *records, size_t n)
         printf("\n");
         puts(separator);
     }
+    free(separator);
     return false;
 }
 
@@ -410,13 +438,22 @@ static struct search_result do_manual_search(void)
         const size_t search_results_chunk_size = 128;
         size_t search_results_size = 0;
         size_t search_results_max_size = search_results_chunk_size;
-        struct record *search_results = malloc(search_results_chunk_size * sizeof(struct record));
-        if(search_results == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
-        struct record **search_results_originals = malloc(search_results_chunk_size * sizeof(struct record *));
-        if(search_results_originals == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
+
+        size_t size;
+        if(!psnip_safe_mul(&size, search_results_chunk_size, sizeof(struct record))) { retval.error = true; retval.record = NULL; return retval; }
+        struct record *search_results = malloc(size);
+        if(search_results == NULL) { retval.error = true; retval.record = NULL; return retval; }
+
+        size_t size2;
+        if(!psnip_safe_mul(&size2, search_results_chunk_size, sizeof(struct record *))) { free(search_results); retval.error = true; retval.record = NULL; return retval; }
+        struct record **search_results_originals = malloc(size2);
+        if(search_results_originals == NULL) { free(search_results); retval.error = true; retval.record = NULL; return retval; }
 
         search_results[0].column_count = header.column_count + 1;
-        search_results[0].columns = malloc((header.column_count + 1) * sizeof(char *));
+        size_t size3;
+        if(!psnip_safe_add(&size3, header.column_count, 1)) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
+        if(!psnip_safe_mul(&size3, size3, sizeof(char *))) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
+        search_results[0].columns = malloc(size3);
         if(search_results[0].columns == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
         for(size_t i = 0; i < header.column_count; i++) search_results[0].columns[i + 1] = header.columns[i];
         search_results[0].columns[0] = "Keuzenummer";
@@ -433,19 +470,28 @@ static struct search_result do_manual_search(void)
                     if(search_results_size + 1 == SIZE_MAX - 1) goto quit_loops;
                     if(search_results_size == search_results_max_size) // Grow it first
                     {
-                        struct record *tmp = realloc(search_results, (search_results_max_size + search_results_chunk_size) * sizeof(struct record));
-                        if(tmp == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
+                        size_t size4;
+                        if(!psnip_safe_add(&size4, search_results_max_size, search_results_chunk_size)) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
+                        if(!psnip_safe_mul(&size4, size4, sizeof(struct record))) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
+                        struct record *tmp = realloc(search_results, size4);
+                        if(tmp == NULL) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
                         search_results = tmp;
 
-                        struct record **tmp_search_results_originals = realloc(search_results_originals, (search_results_max_size + search_results_chunk_size) * sizeof(struct record *));
-                        if(tmp_search_results_originals == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
+                        size_t size5;
+                        if(!psnip_safe_add(&size5, search_results_max_size, search_results_chunk_size)) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
+                        if(!psnip_safe_mul(&size5, size5, sizeof(struct record *))) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
+                        struct record **tmp_search_results_originals = realloc(search_results_originals, size5);
+                        if(tmp_search_results_originals == NULL) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
                         search_results_originals = tmp_search_results_originals;
 
                         search_results_max_size += search_results_chunk_size;
                     }
                     struct record *search_record = search_results + search_results_size;
                     search_record->column_count = record->column_count;
-                    search_record->columns = malloc((record->column_count + 1) * sizeof(char *));
+                    size_t size6;
+                    if(!psnip_safe_add(&size6, record->column_count, 1)) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
+                    if(!psnip_safe_mul(&size6, size6, sizeof(char *))) { free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
+                    search_record->columns = malloc(size6);
                     if(search_record->columns == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
                     for(size_t k = 0; k < record->column_count; k++) search_record->columns[k + 1] = record->columns[k];
 
@@ -457,7 +503,7 @@ static struct search_result do_manual_search(void)
                         int required_size = snprintf(&tmp, 1, "%zu", search_results_size);
                     #endif
                     if(required_size < 0) { printf("Fout: error returned by snprintf\n", strerror(errno)); exit(EXIT_FAILURE); }
-                    if((unsigned int) required_size > SIZE_MAX) { printf("Fout: required_size is groter dan SIZE_MAX\n"); exit(EXIT_FAILURE); }
+                    if((unsigned int) required_size > SIZE_MAX - 1) { printf("Fout: required_size is groter dan SIZE_MAX - 1\n"); exit(EXIT_FAILURE); }
                     char *buf = malloc(required_size + 1);
                     if(buf == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
                     #if defined(_WIN32) && !(defined(_MSC_VER) && _MSC_VER >= 1800)
@@ -468,17 +514,25 @@ static struct search_result do_manual_search(void)
                     #endif
 
                     search_record->columns[0] = buf;
-                    search_record->column_count++;
-
+                    // search_record->column_count++;
+                    if(!psnip_safe_add(&(search_record->column_count), search_record->column_count, 1)) { free(buf); free(search_results_originals); free(search_results); retval.error = true; retval.record = NULL; return retval; }
                     search_results_originals[i] = record;
-
-                    search_results_size++;
+                    // search_results_size++;
+                    if(!psnip_safe_add(&search_results_size, search_results_size, 1))
+                    {
+                        free(buf);
+                        free(search_results_originals);
+                        free(search_results);
+                        retval.error = true;
+                        retval.record = NULL;
+                        return retval;
+                    }
                     break;
                 }
             }
         }
         quit_loops:
-        if(search_results_size == 1)
+        if(search_results_size == 1) // the first is the header
         {
             clearscrn();
             printf("Geen resultaten gevonden. "); // no newline on purpose
@@ -606,7 +660,7 @@ int main(void)
     clearscrn();
     printf("Voer kolomnaam voor aantal/voorraad in (let op: hoofdletter-gevoelig!): "); fflush(stdout);
     amount_column_name = fgetline(stdin);
-    if(amount_column_name == NULL) { printf("Fout: %s", strerror(errno)); exit(EXIT_FAILURE); }
+    if(amount_column_name == NULL) { printf("Fout: %s", strerror(errno)); free(barcode_column_name); exit(EXIT_FAILURE); }
 
     if(strcmp(amount_column_name, barcode_column_name) == 0)
     {
@@ -614,16 +668,17 @@ int main(void)
         exit(EXIT_FAILURE);
     }
 
-
-    records = malloc(RECORDS_CHUNK_SIZE * sizeof(struct record));
-    if(records == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); exit(EXIT_FAILURE); }
+    size_t size;
+    if(!psnip_safe_mul(&size, RECORDS_CHUNK_SIZE, sizeof(struct record))) { printf("Fout: integer overflow\n"); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
+    records = malloc(size);
+    if(records == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s)\n", strerror(errno)); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
     records_max_size = RECORDS_CHUNK_SIZE;
     for(size_t i = 0; i < records_max_size; i++) records[i].column_count = 0;
 
     struct csv_parser parser;
-    if(csv_init(&parser, 0) != 0) { printf("Fout: kon parser niet initialiseren.\n"); free(records); exit(EXIT_FAILURE); }
+    if(csv_init(&parser, 0) != 0) { printf("Fout: kon parser niet initialiseren.\n"); free(records); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
     size_t bytes_processed = csv_parse(&parser, buf, buf_used, end_of_field_callback, end_of_record_callback, NULL); // record is the line, field is an entry
-    if(bytes_processed < buf_used) { printf("Fout: fout tijdens het lezen van CSV bestand. (%s)\n", csv_strerror(csv_error(&parser))); free(records); exit(EXIT_FAILURE); }
+    if(bytes_processed < buf_used) { printf("Fout: fout tijdens het lezen van CSV bestand. (%s)\n", csv_strerror(csv_error(&parser))); free(records); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
     csv_fini(&parser, end_of_field_callback, end_of_record_callback, NULL); // TODO do we want both callbacks to be called here?
 
     while(true)
@@ -644,26 +699,27 @@ int main(void)
         else if(barcode[0] == '\0')
         {
             result = do_manual_search();
-            if(result.error) { printf("Fout: %s", strerror(errno)); continue; }
+            if(result.error) { printf("Fout: %s", strerror(errno)); free(barcode); continue; }
             record = result.record;
-            if(record == NULL) continue;
+            if(record == NULL) { free(barcode); continue; }
         }
         else
         {
             result = do_barcode_search(barcode);
-            if(result.error) { printf("Fout: %s", strerror(errno)); continue; }
+            if(result.error) { printf("Fout: %s", strerror(errno)); free(barcode); continue; }
             record = result.record;
             if(record == NULL)
             {
                 clearscrn();
                 printf("Kon geen product met barcode %s vinden. ", barcode); // no newline and purpose
-                if(!ask("Wilt u handmatig zoeken?")) { continue; }
+                if(!ask("Wilt u handmatig zoeken?")) { free(barcode); continue; }
                 result = do_manual_search();
-                if(result.error) { printf("Fout: %s", strerror(errno)); continue; }
+                if(result.error) { printf("Fout: %s", strerror(errno)); free(barcode); continue; }
                 record = result.record;
-                if(record == NULL) continue;
+                if(record == NULL) { free(barcode); continue; }
             }
         }
+        free(barcode);
 
         clearscrn();
         printf("Dit product is gevonden:\n");

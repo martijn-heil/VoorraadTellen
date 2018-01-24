@@ -70,7 +70,7 @@
   !defined(psnip_uint16_t) || !defined(psnip_int16_t) || \
   !defined(psnip_uint32_t) || !defined(psnip_int32_t) || \
   !defined(psnip_uint64_t) || !defined(psnip_int64_t)
-#    include "../exact-int/exact-int.h"
+#    include "exact-int.h"
 #endif
 #endif /* !defined(PSNIP_SAFE_NO_FIXED) */
 #include <limits.h>
