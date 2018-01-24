@@ -58,7 +58,10 @@ static char *fgetline(FILE *input)
 
         if(buf_used == 256)
         {
-            char *tmp = realloc(buf, buf_size + CHUNK_SIZE + 1);
+            size_t size;
+            if(!psnip_safe_add(&size, buf_size, CHUNK_SIZE)) { free(buf); return NULL; }
+            if(!psnip_safe_add(&size, size, 1)) { free(buf); return NULL; }
+            char *tmp = realloc(buf, size);
             if(tmp == NULL)
             {
                 free(buf);
