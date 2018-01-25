@@ -502,7 +502,7 @@ static struct search_result do_manual_search(void)
                     printf("test: %lu\n", search_results_size);
                     #if defined(_WIN32) && !(defined(_MSC_VER) && _MSC_VER >= 1800)
                         int required_size = snprintf(&tmp, 1, "%lu", search_results_size); // blame bloody Macrosuft, %zu support came way too late.
-                    #elif
+                    #else
                         int required_size = snprintf(&tmp, 1, "%zu", search_results_size);
                     #endif
                     if(required_size < 0) { printf("Fout: error returned by snprintf\n", strerror(errno)); exit(EXIT_FAILURE); }
@@ -512,7 +512,7 @@ static struct search_result do_manual_search(void)
                     #if defined(_WIN32) && !(defined(_MSC_VER) && _MSC_VER >= 1800)
                         // blame bloody Macrosuft, %zu support came way too late.
                         if(sprintf(buf, "%lu", search_results_size) < 0) { printf("Fout: error returned by sprintf\n"); exit(EXIT_FAILURE); }
-                    #elif
+                    #else
                         if(sprintf(buf, "%zu", search_results_size) < 0) { printf("Fout: error returned by sprintf\n"); exit(EXIT_FAILURE); }
                     #endif
 
