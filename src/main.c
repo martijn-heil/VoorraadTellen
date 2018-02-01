@@ -758,11 +758,12 @@ int main(void)
         char *amount = fgetline(stdin);
         if(amount == NULL) { printf("Fout: kon ingevoerd aantal niet lezen (%s). Kon aantal hierdoor niet opslaan.\n", strerror(errno)); continue; }
         if(*amount == '\0') continue;
+        free(record->columns[amount_column_index]);
         record->columns[amount_column_index] = amount;
         to_free_add(amount);
         if(!save(&parser, records, records_size, path)) save_error = true;
     }
-
+    // TODO free all columns in records, remove to_free construct as it is no longer needed
     csv_free(&parser);
     to_free_free();
     free(path);
