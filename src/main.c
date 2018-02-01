@@ -637,6 +637,12 @@ int main(void)
 {
     atexit(at_exit_callback);
     clearscrn(); // Also prints welcome message
+    printf("Voer lijstscheidingsteken in (meetal een komma of puntkomma): "); fflush(stdout);
+    int delim = fgetc(stdin);
+    if(delim == EOF) { printf("Fout.\n"); exit(EXIT_FAILURE); }
+    fgetc(stdin);
+
+
     FILE *file;
     char *msg1 = "Voer pad naar CSV bestand in (bijvoorbeeld: C:\\Users\\Jan\\Desktop\\test.csv): ";
     printf("%s", msg1); fflush(stdout);
@@ -696,6 +702,7 @@ int main(void)
 
     struct csv_parser parser;
     if(csv_init(&parser, 0) != 0) { printf("Fout: kon parser niet initialiseren.\n"); free(records); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
+    csv_set_delim(&parser, delim);
     size_t bytes_processed = csv_parse(&parser, buf, buf_used, end_of_field_callback, end_of_record_callback, NULL); // record is the line, field is an entry
     if(bytes_processed < buf_used) { printf("Fout: fout tijdens het lezen van CSV bestand. (%s)\n", csv_strerror(csv_error(&parser))); free(records); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
     csv_fini(&parser, end_of_field_callback, end_of_record_callback, NULL); // TODO do we want both callbacks to be called here?
