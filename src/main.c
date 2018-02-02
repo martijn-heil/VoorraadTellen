@@ -306,7 +306,7 @@ static bool save(struct csv_parser *parser, struct record *records, size_t recor
         for(size_t j = 0; j < record->column_count; j++)
         {
             if(csv_fwrite(f, record->columns[j], strlen(record->columns[j])) == EOF) return false;
-            if(j != record->column_count - 1) fputc(',', f);
+            if(j != record->column_count - 1) fputc(delim, f);
         }
         fputc('\n', f);
     }
