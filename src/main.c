@@ -194,6 +194,7 @@ static char *amount_column_name;
 static char *barcode_column_name;
 static size_t amount_column_index;
 static size_t barcode_column_index;
+static int delim;
 
 
 static void end_of_field_callback(void *parsed_data, size_t len, void *callback_data)
@@ -638,7 +639,7 @@ int main(void)
     atexit(at_exit_callback);
     clearscrn(); // Also prints welcome message
     printf("Voer lijstscheidingsteken in (meestal een komma of puntkomma): "); fflush(stdout);
-    int delim = fgetc(stdin);
+    delim = fgetc(stdin);
     if(delim == EOF) { printf("Fout.\n"); exit(EXIT_FAILURE); }
     fgetc(stdin);
 
