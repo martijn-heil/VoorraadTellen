@@ -637,7 +637,7 @@ int main(void)
 {
     atexit(at_exit_callback);
     clearscrn(); // Also prints welcome message
-    printf("Voer lijstscheidingsteken in (meetal een komma of puntkomma): "); fflush(stdout);
+    printf("Voer lijstscheidingsteken in (meestal een komma of puntkomma): "); fflush(stdout);
     int delim = fgetc(stdin);
     if(delim == EOF) { printf("Fout.\n"); exit(EXIT_FAILURE); }
     fgetc(stdin);
