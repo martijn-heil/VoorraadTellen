@@ -1,6 +1,6 @@
 /*
     Voorraad tellen.
-    Copyright (C) 2018  Martijn Heil
+    Copyright (C) 2018-2020  Martijn Heil
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -85,7 +85,7 @@ static char *fgetline(FILE *input)
 static void print_welcome(void)
 {
     printf("Voorraad tellen.\n"
-            "Copyright (C) 2018  Martijn Heil\n"
+            "Copyright (C) 2018-2020  Martijn Heil\n"
             "\n"
             "This program is free software: you can redistribute it and/or modify\n"
             "it under the terms of the GNU General Public License as published by\n"
