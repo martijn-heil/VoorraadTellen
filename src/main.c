@@ -714,7 +714,7 @@ int main(void)
         if(save_error) { printf("Fout: kon bestand niet opslaan. (%s ?)\n", strerror(errno)); save_error = false; }
 
         clearscrn();
-        printf("Voer barcode in (druk op enter om meteen handmatig te zoeken): "); fflush(stdout);
+        printf("Voer barcode in (druk op enter om meteen handmatig te zoeken):\a "); fflush(stdout);
         char *barcode = fgetline(stdin);
         struct search_result result;
         struct record *record;
