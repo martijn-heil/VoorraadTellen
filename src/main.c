@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdarg.h>
 #include <errno.h>
 #include <string.h>
 #include <ctype.h>
@@ -39,6 +40,7 @@
     #endif
 #endif
 
+// Don't forget to free the returned value.
 static char *fgetline(FILE *input)
 {
     static const size_t CHUNK_SIZE = 256;
@@ -190,8 +192,6 @@ static size_t records_size = 0;
 static struct record *records;
 static struct record header;
 
-static char *amount_column_name;
-static char *barcode_column_name;
 static size_t amount_column_index;
 static size_t barcode_column_index;
 static int delim;
@@ -232,31 +232,6 @@ static void end_of_record_callback(int c, void *callback_data)
     if(init) // skip the header, use it to find the column indexes
     {
         struct record *record = records; // = "records", That's not a bug.
-        bool found_amount_column = false;
-        bool found_barcode_column = false;
-        for(size_t i = 0; i < record->column_count; i++)
-        {
-            if(strcmp(record->columns[i], barcode_column_name) == 0)
-            {
-                found_barcode_column = true;
-                barcode_column_index = i;
-            }
-            else if(strcmp(record->columns[i], amount_column_name) == 0)
-            {
-                found_amount_column = true;
-                amount_column_index = i;
-            }
-        }
-        if(!found_barcode_column)
-        {
-            printf("Fout: kon de kolom voor barcode genaamd '%s' niet vinden!\n", barcode_column_name);
-            exit(EXIT_FAILURE);
-        }
-        else if(!found_amount_column)
-        {
-            printf("Fout: kon de kolom voor aantal genaamd '%s' niet vinden!\n", amount_column_name);
-            exit(EXIT_FAILURE);
-        }
 
         // Save header as header
         size_t size;
@@ -429,6 +404,47 @@ static bool ask(char *question)
     return retval;
 }
 
+static bool ask_scanf(const char *question, const char *format, bool show_format, size_t argcount, ...)
+{
+    va_list args;
+    va_start(args, argcount);
+
+    if (show_format)
+    {
+        printf("%s: ", question);
+    }
+    else
+    {
+        printf("%s (format: %s): ", question, format);
+    }
+    fflush(stdout);
+
+    while(true)
+    {
+        clearerr(stdin); // make sure to clear
+        int result = vscanf(format, args);
+        if ((result == EOF && !ferror(stdin)) || result < argcount)
+        {
+            printf("Ongeldig antwoord. Voer uw antwoord opnieuw in: ");
+            fflush(stdout);
+            getchar(); // get rid of newline
+            continue;
+        }
+        else if (result == EOF && ferror(stdin))
+        {
+          printf("Er is een fout opgetreden: '%s'. Voer uw antwoord opnieuw in: ", strerror(errno));
+          fflush(stdout);
+          getchar(); // get rid of newline
+          continue;
+        }
+        getchar(); // get rid of newline
+        break;
+    }
+
+    va_end(args);
+    return true;
+}
+
 static struct search_result do_manual_search(void)
 {
     struct search_result retval;
@@ -590,6 +606,7 @@ static struct search_result do_manual_search(void)
                 free(search_results_originals);
                 return retval;
             }
+            // TODO don't use atoll
             long long llindex = atoll(num); // This index starts at 1 because we skip the header
             free(num);
             if(llindex <= 0 || (unsigned long long) llindex > search_results_size-1) { clearscrn(); printf("Fout: ongeldig nummer %lld\n", llindex); continue; }
@@ -621,7 +638,6 @@ static struct search_result do_barcode_search(char *barcode)
             break;
         }
     }
-    //struct search_result retval = { .record = record, .error = false };
     struct search_result retval;
     retval.record = record;
     retval.error = false;
@@ -679,41 +695,136 @@ int main(void)
     fclose(file);
 
     clearscrn();
-    printf("Voer kolomnaam voor barcode in (let op: hoofdletter-gevoelig!): "); fflush(stdout);
-    barcode_column_name = fgetline(stdin);
-    if(barcode_column_name == NULL) { printf("Fout: %s", strerror(errno)); exit(EXIT_FAILURE); }
 
-    clearscrn();
-    printf("Voer kolomnaam voor aantal/voorraad in (let op: hoofdletter-gevoelig!): "); fflush(stdout);
-    amount_column_name = fgetline(stdin);
-    if(amount_column_name == NULL) { printf("Fout: %s", strerror(errno)); free(barcode_column_name); exit(EXIT_FAILURE); }
-
-    if(strcmp(amount_column_name, barcode_column_name) == 0)
-    {
-        printf("Fout: kolomnaam voor barcode en aantal mogen niet hetzelfde zijn! ('%s')", barcode_column_name);
-        exit(EXIT_FAILURE);
-    }
-
+    printf("CSV bestand inladen..\n");
     size_t size;
-    if(!psnip_safe_mul(&size, RECORDS_CHUNK_SIZE, sizeof(struct record))) { printf("Fout: integer overflow\n"); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
+    if(!psnip_safe_mul(&size, RECORDS_CHUNK_SIZE, sizeof(struct record))) { printf("Fout: integer overflow\n"); exit(EXIT_FAILURE); }
     records = malloc(size);
-    if(records == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s) (main.c:%i)\n", strerror(errno), __LINE__); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
+    if(records == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s) (main.c:%i)\n", strerror(errno), __LINE__); exit(EXIT_FAILURE); }
     records_max_size = RECORDS_CHUNK_SIZE;
     for(size_t i = 0; i < records_max_size; i++) records[i].column_count = 0;
 
     struct csv_parser parser;
-    if(csv_init(&parser, 0) != 0) { printf("Fout: kon parser niet initialiseren.\n"); free(records); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
+    if(csv_init(&parser, 0) != 0) { printf("Fout: kon parser niet initialiseren.\n"); free(records); exit(EXIT_FAILURE); }
     csv_set_delim(&parser, delim);
     size_t bytes_processed = csv_parse(&parser, buf, buf_used, end_of_field_callback, end_of_record_callback, NULL); // record is the line, field is an entry
-    if(bytes_processed < buf_used) { printf("Fout: fout tijdens het lezen van CSV bestand. (%s)\n", csv_strerror(csv_error(&parser))); free(records); free(barcode_column_name); free(amount_column_name); exit(EXIT_FAILURE); }
+    if(bytes_processed < buf_used) { printf("Fout: fout tijdens het lezen van CSV bestand. (%s)\n", csv_strerror(csv_error(&parser))); free(records); exit(EXIT_FAILURE); }
     csv_fini(&parser, end_of_field_callback, end_of_record_callback, NULL); // TODO do we want both callbacks to be called here?
+
+    clearscrn();
+
+    size_t preview_length = 5; // preview_length may not be bigger than SIZE_MAX - 2
+    struct record choose_columns_table[preview_length + 3];
+    choose_columns_table[0].column_count = header.column_count;
+    char *choose_columns_table_header_columns[header.column_count];
+    choose_columns_table[0].columns = choose_columns_table_header_columns;
+
+    // Add column numbers header
+    for (size_t i = 0; i < choose_columns_table[0].column_count; i++)
+    {
+        size_t human_index; // Starts at 1 instead of 0
+        if(!psnip_safe_add(&human_index, i, 1)) { printf("Fout: integer overflow. (main.c:%i)\n", __LINE__); exit(EXIT_FAILURE); }
+
+        char tmp;
+        // blame bloody Macrosuft for the following abomination, they're still stuck in 1989.
+        #if defined(_WIN32)
+            int required_size = snprintf(NULL, 0, "%Iu", human_index);
+        #else
+            int required_size = snprintf(&tmp, 1, "%zu", human_index);
+        #endif
+        if(required_size < 0) { printf("Fout: error returned by snprintf\n", strerror(errno)); exit(EXIT_FAILURE); }
+        if((unsigned int) required_size > SIZE_MAX - 1) { printf("Fout: required_size is groter dan SIZE_MAX - 1\n"); exit(EXIT_FAILURE); }
+        char *buf = malloc(required_size + 1);
+        if(buf == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s) (main.c:%i)\n", strerror(errno), __LINE__); exit(EXIT_FAILURE); }
+        // blame bloody Macrosuft for the following abomination, they're still stuck in 1989.
+        #if defined(_WIN32)
+            if(sprintf(buf, "%Iu", human_index) < 0) { printf("Fout: error returned by sprintf\n"); exit(EXIT_FAILURE); }
+        #else
+            if(sprintf(buf, "%zu", human_index) < 0) { printf("Fout: error returned by sprintf\n"); exit(EXIT_FAILURE); }
+        #endif
+        choose_columns_table[0].columns[i] = buf; // buf contains the string representation of the human index.
+    }
+    size_t max_choose_columns_table_col_count = 0;
+    choose_columns_table[1] = header; // Second row becomes the header
+    for (size_t i = 0; i < preview_length; i++) // Remaining preview_length rows become preview rows
+    {
+        choose_columns_table[i + 2] = records[i];
+        if (max_choose_columns_table_col_count < records[i].column_count) max_choose_columns_table_col_count = records[i].column_count;
+    }
+
+    // Produce a row containing only dots in each cell as the final row.
+    struct record sniff_and_so_on;
+    sniff_and_so_on.column_count = max_choose_columns_table_col_count;
+
+    char *sniff_and_so_on_columns[sniff_and_so_on.column_count];
+    for (size_t i = 0; i < sniff_and_so_on.column_count; i++)
+    {
+        sniff_and_so_on_columns[i] = "...";
+    }
+    sniff_and_so_on.columns = sniff_and_so_on_columns;
+    choose_columns_table[preview_length + 2] = sniff_and_so_on;
+
+
+    // blame bloody Macrosuft for the following abomination, they're still stuck in 1989.
+    #if defined(_WIN32)
+        char *human_index_format = "%Iu";
+    #else
+        char *human_index_format = "%zu";
+    #endif
+
+    print_table(choose_columns_table, preview_length + 3);
+
+
+    // Select barcode column index
+    while (true)
+    {
+        size_t chosen_human_index;
+        if(!ask_scanf("Voer keuzenummer van de barcode-kolom in", human_index_format, true, 1, &chosen_human_index))
+        {
+            printf("ask_scanf error.\n");
+            exit(EXIT_FAILURE);
+        }
+        if (chosen_human_index == 0 || chosen_human_index > header.column_count)
+        {
+            printf("Ongeldig keuzenummer '%zu'. Voer uw antwoord opnieuw in.\n", chosen_human_index);
+            continue;
+        }
+
+        barcode_column_index = chosen_human_index - 1;
+        break;
+    }
+
+    // Select amount column index
+    while (true)
+    {
+        size_t chosen_human_index;
+        if(!ask_scanf("Voer keuzenummer van de aantal/voorraad-kolom in", human_index_format, true, 1, &chosen_human_index))
+        {
+            printf("ask_scanf error.\n");
+            exit(EXIT_FAILURE);
+        }
+        if (chosen_human_index == 0 || chosen_human_index > header.column_count)
+        {
+            printf("Ongeldig keuzenummer '%zu'. Voer uw antwoord opnieuw in.\n", chosen_human_index);
+            continue;
+        }
+
+        amount_column_index = chosen_human_index - 1;
+        break;
+    }
+
+    for(size_t i = 0; i < choose_columns_table[0].column_count; i++)
+    {
+      free(choose_columns_table[0].columns[i]);
+    }
+    clearscrn();
 
     while(true)
     {
         bool save_error = false;
-        if(save_error) { printf("Fout: kon bestand niet opslaan. (%s ?)\n", strerror(errno)); save_error = false; }
 
         clearscrn();
+        if(save_error) { printf("Fout: kon bestand niet opslaan. (%s ?)\n", strerror(errno)); save_error = false; }
         printf("Voer barcode in (druk op enter om meteen handmatig te zoeken):\a "); fflush(stdout);
         char *barcode = fgetline(stdin);
         struct search_result result;
