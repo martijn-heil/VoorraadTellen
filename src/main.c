@@ -703,7 +703,7 @@ int main(void)
 
     char *outpath;
     FILE *outfile;
-    if(ask("Wilt u de wijzingingen in een nieuw bestand opslaan?\n  Dit kan veiliger zijn i.v.m. gegevensverlies terwijl de wijzigingen worden opgeslagen."))
+    if(ask("Wilt u het bijgewerkte bestand in een nieuw bestand opslaan?\n  Dit kan veiliger zijn i.v.m. gegevensverlies terwijl de wijzigingen worden opgeslagen."))
     {
         char *msg2 = "Voer pad naar CSV bestand voor wijzigingen in (bijvoorbeeld: C:\\Users\\Jan\\Desktop\\bijgewerkt.csv): ";
         printf("%s", msg2); fflush(stdout);
@@ -810,6 +810,8 @@ int main(void)
     #endif
 
     print_table(choose_columns_table, preview_length + 3);
+    printf("\nAls deze voorbeeld tabel er vreemd uit ziet, kan het zijn dat u het verkeerde lijstscheidingsteken heeft ingevoerd.\n"
+            "Sluit dan het programma en start het opnieuw om een ander lijstscheidingsteken te proberen.\n\n");
 
 
     // Select barcode column index
