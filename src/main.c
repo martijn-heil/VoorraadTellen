@@ -660,39 +660,70 @@ int main(void)
     fgetc(stdin);
 
 
-    FILE *file;
-    char *msg1 = "Voer pad naar CSV bestand in (bijvoorbeeld: C:\\Users\\Jan\\Desktop\\test.csv): ";
+    FILE *infile;
+    char *msg1 = "Voer pad naar CSV bestand in (bijvoorbeeld: C:\\Users\\Jan\\Desktop\\artikelen.csv): ";
     printf("%s", msg1); fflush(stdout);
-    char *path;
-    while(true)
+    char *inpath;
+    while (true)
     {
-        path = fgetline(stdin);
-        if(path == NULL) { printf("Fout: %s\n", strerror(errno)); exit(EXIT_FAILURE); }
+        inpath = fgetline(stdin);
+        if(inpath == NULL) { printf("Fout: %s\n", strerror(errno)); exit(EXIT_FAILURE); }
 
-        file = fopen(path, "r+");
-        if(file == NULL)
+        infile = fopen(inpath, "r+");
+        if(infile == NULL)
         {
             clearscrn();
             printf("Fout: kon bestand niet openen. (%s)\n", strerror(errno));
             printf("%s", msg1); fflush(stdout);
-            free(path);
+            free(inpath);
         }
         else
         {
             break;
         }
     }
-    fseek(file, 0, SEEK_END);
-    long fsize = ftell(file);
+    fseek(infile, 0, SEEK_END);
+    long fsize = ftell(infile);
     if(fsize == -1) { printf("Fout: %s\n", strerror(errno)); exit(EXIT_FAILURE); }
     if(fsize < 0) { printf("Fout: invalid value for fsize.\n"); exit(EXIT_FAILURE); }
-    fseek(file, 0, SEEK_SET);
+    fseek(infile, 0, SEEK_SET);
     if((unsigned long) fsize > SIZE_MAX) { printf("Fout: value exceeded SIZE_MAX, could not store variable.\n"); exit(EXIT_FAILURE); }
     char *buf = malloc(fsize);
     if(buf == NULL) { printf("Fout: kon geen extra geheugen-ruimte aanvragen. (%s) (main.c:%i)\n", strerror(errno), __LINE__); }
-    size_t buf_used = fread(buf, 1, fsize, file);
+    size_t buf_used = fread(buf, 1, fsize, infile);
     if(buf_used == 0) { printf("Fout: kon data niet lezen uit bestand.\n"); exit(EXIT_FAILURE); }
-    fclose(file);
+    fclose(infile);
+
+
+    char *outpath;
+    FILE *outfile;
+    if(ask("Wilt u de wijzingingen in een nieuw bestand opslaan?\n  Dit kan veiliger zijn i.v.m. gegevensverlies terwijl de wijzigingen worden opgeslagen."))
+    {
+        char *msg2 = "Voer pad naar CSV bestand voor wijzigingen in (bijvoorbeeld: C:\\Users\\Jan\\Desktop\\bijgewerkt.csv): ";
+        printf("%s", msg2); fflush(stdout);
+        while (true)
+        {
+            outpath = fgetline(stdin);
+            if (outpath == NULL) { printf("Fout: %s\n", strerror(errno)); exit(EXIT_FAILURE); }
+            if (strcmp(outpath, inpath) == 0) { free(outpath); outpath = inpath; break; }
+            outfile = fopen(outpath, "w");
+            if (outfile == NULL)
+            {
+                clearscrn();
+                printf("Fout: kon bestand niet openen. (%s)\n", strerror(errno));
+                printf("%s", msg2); fflush(stdout);
+                free(outpath);
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+    else
+    {
+        outpath = inpath;
+    }
 
     clearscrn();
 
@@ -873,11 +904,12 @@ int main(void)
         free(record->columns[amount_column_index]);
         record->columns[amount_column_index] = amount;
         to_free_add(amount);
-        if(!save(&parser, records, records_size, path)) save_error = true;
+        if(!save(&parser, records, records_size, outpath)) save_error = true;
     }
     // TODO free all columns in records, remove to_free construct as it is no longer needed
     csv_free(&parser);
     to_free_free();
-    free(path);
+    if (outpath != inpath) free(outpath);
+    free(inpath);
     return EXIT_SUCCESS;
 }
