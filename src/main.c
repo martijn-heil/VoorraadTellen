@@ -86,7 +86,8 @@ static char *fgetline(FILE *input)
 
 static void print_header(void)
 {
-    printf("Voorraad tellen. Copyright (C) 2018-2020  Martijn Heil\n\n\n");
+    printf("Voorraad tellen. Copyright (C) 2018-2020  Martijn Heil\n"
+            "U kunt dit programma op elk moment normaal sluiten, veranderingen worden automatisch opgeslagen.\n\n");
 }
 
 static void print_welcome(void)
@@ -127,6 +128,16 @@ static void clearscrn(void)
     #elif defined(POSIX)
         printf("\033[2J\033[1;1H");
         print_header();
+    #endif
+    // else just do nothing.
+}
+
+static void clearscrn_true(void)
+{
+    #ifdef _WIN32
+        system("cls");
+    #elif defined(POSIX)
+        printf("\033[2J\033[1;1H");
     #endif
     // else just do nothing.
 }
@@ -658,7 +669,7 @@ void at_exit_callback(void)
 int main(void)
 {
     atexit(at_exit_callback);
-    clearscrn();
+    clearscrn_true();
     print_welcome();
     printf("Voer lijstscheidingsteken in (meestal een komma of puntkomma): "); fflush(stdout);
     delim = fgetc(stdin);
