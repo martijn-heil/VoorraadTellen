@@ -84,6 +84,11 @@ static char *fgetline(FILE *input)
     }
 }
 
+static void print_header(void)
+{
+    printf("Voorraad tellen. Copyright (C) 2018-2020  Martijn Heil\n\n\n");
+}
+
 static void print_welcome(void)
 {
     printf("Voorraad tellen.\n"
@@ -118,10 +123,10 @@ static void clearscrn(void)
 {
     #ifdef _WIN32
         system("cls");
-        print_welcome();
+        print_header();
     #elif defined(POSIX)
         printf("\033[2J\033[1;1H");
-        print_welcome();
+        print_header();
     #endif
     // else just do nothing.
 }
@@ -580,7 +585,7 @@ static struct search_result do_manual_search(void)
         {
             printf("Resultaten voor \"%s\":\n", query);
             print_table(search_results, search_results_size);
-            printf("Kies een nummer, druk op enter om opnieuw te zoeken, of voer 0 in om te stoppen met handmatig zoeken: "); fflush(stdout);
+            printf("Kies een keuzenummer, druk op enter om opnieuw te zoeken, of voer 0 in om te stoppen met handmatig zoeken: "); fflush(stdout);
             char *num = fgetline(stdin);
             if(num == NULL)
             {
@@ -653,7 +658,8 @@ void at_exit_callback(void)
 int main(void)
 {
     atexit(at_exit_callback);
-    clearscrn(); // Also prints welcome message
+    clearscrn();
+    print_welcome();
     printf("Voer lijstscheidingsteken in (meestal een komma of puntkomma): "); fflush(stdout);
     delim = fgetc(stdin);
     if(delim == EOF) { printf("Fout.\n"); exit(EXIT_FAILURE); }
